@@ -1,0 +1,34 @@
+#!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+USAGE="Usage: $(basename $0) [-acj] cert_arn\n\
+  Get a certificate issued by ACM, i.e., Certificate ARN starting with arn:aws:acm:\n\
+\t-a  Include Arn in the output\n\
+\t-c  Get the chain instead\n\
+\t-j  Get the full JSON with Chain\n\
+If multiple options are specified, only the last one will be effective."
+usage() { echo -e "$USAGE" >&2; exit 2; }
+
+outputType=
+while getopts "acj" arg; do
+  case "$arg" in
+    a)  outputType=arn;;
+    c)  outputType=chain;;
+    j)  outputType=json;;
+  esac
+done
+shift $((OPTIND-1))
+
+cert=$1
+if [ -z "$cert" ]; then
+  usage
+fi
+
+aws acm get-certificate --certificate-arn $cert |
+case "$outputType" in
+  arn)    ( echo "{\"Arn\": \"$cert\"}"; cat ) | jq -s add;;
+  chain)  jq -r '(.CertificateChain)';;
+  json)   jq .;;
+  *)      jq -r '(.Certificate)';;
+esac

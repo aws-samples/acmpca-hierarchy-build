@@ -1,0 +1,23 @@
+#!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+USAGE="Usage: $(basename $0) [-a] chain_file\n\
+\t-a  Show all details of each certificate in the bundle (instead of a summary)"
+usage() { echo -e "$USAGE" >&2; exit 2; }
+
+textFlag=""
+while getopts "a" arg; do
+  case "$arg" in
+    a)  textFlag="-text";;
+  esac
+done
+shift $((OPTIND-1))
+
+chainFile=$1
+if [ -z "$chainFile" ]; then
+  usage
+fi
+
+openssl crl2pkcs7 -nocrl -certfile $chainFile |
+openssl pkcs7 -print_certs -noout $textFlag

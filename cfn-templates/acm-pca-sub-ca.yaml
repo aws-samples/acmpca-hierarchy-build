@@ -1,0 +1,244 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Private Subordinate Certificate Authority (CA) creation template
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+Parameters:
+  CaValidityValue:
+    Description: Private Subordinate CA validity value; default is 3
+    Type: Number
+    Default: 3
+
+  CaValidityType:
+    Description: Private Subordinate CA validity time unit; default is YEARS
+    Type: String
+    AllowedValues: [ "YEARS", "MONTHS", "DAYS" ]
+    Default: "YEARS"
+
+  CaCommonName:
+    Description: Common Name (CN) of the private Subordinate CA, e.g., Example Human Resources CA v1
+    Type: String
+
+  CaSubjectCountry:
+    Description: Country in the private Subordinate CA Certificate Subject, e.g., AU
+    Type: String
+
+  CaSubjectState:
+    Description: State in the private Subordinate CA Certificate Subject, e.g., New South Wales
+    Type: String
+
+  CaSubjectLocality:
+    Description: Locality in the private Subordinate CA Certificate Subject, e.g., Sydney
+    Type: String
+
+  CaSubjectOrganization:
+    Description: Organization in the private Subordinate CA Certificate Subject, e.g., Example Ltd
+    Type: String
+
+  CaSubjectOrganizationalUnit:
+    Description: Organizational Unit (OU) in the private Subordinate CA Certificate Subject, e.g., Human Resources
+    Type: String
+
+  CaKeyAlgorithm:
+    Description: Key Algorithm of the key pair the private Subordinate CA creates when issuing a certificate; default is RSA_4096
+    Type: String
+    AllowedValues: [ "RSA_2048", "RSA_4096", "EC_prime256v1", "EC_secp384r1" ]
+    Default: "RSA_4096"
+
+  CaSigningAlgorithm:
+    Description: Signing Algorithm the private Subordinate CA uses to sign certificate requests; default is SHA512WITHRSA
+    Type: String
+    AllowedValues: [ "SHA256WITHECDSA", "SHA384WITHECDSA", "SHA512WITHECDSA", "SHA256WITHRSA", "SHA384WITHRSA", "SHA512WITHRSA" ]
+    Default: "SHA512WITHRSA"
+
+  CaChainS3BucketName:
+    Description: >
+      Existing S3 Bucket for CloudFormation to hold the CA Chain and Template snippet;
+    Type: String
+    AllowedPattern: >-
+      ^[0-9a-zA-Z]+([0-9a-zA-Z-]*[0-9a-zA-Z])*$
+
+  CertifyingCaArn:
+    Description: ARN of the parent CA, i.e., the CA certifying the new Subordinate CA in activation
+    Type: String
+    AllowedPattern: >-
+      ^arn:[\w+=/,.@-]+:[\w+=/,.@-]+:[\w+=/,.@-]*:[0-9]*:[\w+=,.@-]+(/[\w+=,.@-]+)*$
+
+  SubCaPathLen:
+    Description: >
+      How many levels of Subordinate CAs can be certified under this new Subordinate CA; default is 0 (no Subordinate CAs under this)
+    Type: Number
+    AllowedValues: [ 0, 1, 2, 3 ]
+    Default: 0
+
+  CrlExpirationInDays:
+    Description: CRL Expiration in Days, e.g., 2
+    Type: Number
+    Default: 2
+
+  CrlCname:
+    Description: >
+      CRL Canonical Name (Cname), e.g., crl.pca.example.int
+      (a globally unique name even privately hosted, as the CRL hosting S3 bucket needs to have a globally unique name)
+    Type: String
+    AllowedPattern: >-
+      ^[a-z0-9][a-z0-9-\.]{2,62}$
+# Needs to align with S3 bucket naming pattern instead of the FQDN one: "^(((?!-)[A-Za-z0-9-]{0,62}[A-Za-z0-9])\.)+((?!-)[A-Za-z0-9-]{1,62}[A-Za-z0-9])$"
+
+  CrlCnameIsNew:
+    Description: >
+      Is the CRL Cname new?
+      Select YES if you want to create a new CRL Cname, or
+      NO if the specified CRL Cname already exists (e.g., a shared CrlCname)
+    Type: String
+    AllowedValues: [ "YES", "NO" ]
+    Default: "YES"
+
+  CrlPrivateZoneId:
+    Description: CRL Private Zone ID, i.e., the Zone ID of the Private Zone where CrlCname is hosted.
+    Type: AWS::Route53::HostedZone::Id
+
+Conditions:
+  crlNew: !Equals
+    - !Ref CrlCnameIsNew
+    - "YES"
+
+Resources:
+  ############################################################
+  #
+  # Sub CA
+  #
+  SubCa:
+    Type: AWS::ACMPCA::CertificateAuthority
+    DependsOn: CrlS3BucketPolicy
+    Properties:
+      Type: "SUBORDINATE"
+      Subject:
+        CommonName: !Ref CaCommonName
+        Country: !Ref CaSubjectCountry
+        Locality: !Ref CaSubjectLocality
+        Organization: !Ref CaSubjectOrganization
+        OrganizationalUnit: !Ref CaSubjectOrganizationalUnit
+        State: !Ref CaSubjectState
+      RevocationConfiguration:
+        CrlConfiguration:
+          CustomCname: !Ref CrlCname
+          Enabled: true
+          ExpirationInDays: !Ref CrlExpirationInDays
+          S3BucketName: !Ref CaChainS3BucketName
+      KeyAlgorithm: !Ref CaKeyAlgorithm
+      SigningAlgorithm: !Ref CaSigningAlgorithm
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+
+  SubCaCert:
+    Type: AWS::ACMPCA::Certificate
+    Properties:
+      TemplateArn: !Sub "arn:aws:acm-pca:::template/SubordinateCACertificate_PathLen${SubCaPathLen}/V1"
+      CertificateAuthorityArn: !Ref CertifyingCaArn
+      CertificateSigningRequest: !GetAtt SubCa.CertificateSigningRequest
+      SigningAlgorithm: !Ref CaSigningAlgorithm
+      Validity:
+        Type: !Ref CaValidityType
+        Value: !Ref CaValidityValue
+
+  SubCaCertActivation:
+    Type: AWS::ACMPCA::CertificateAuthorityActivation
+    Properties:
+      Certificate: !GetAtt SubCaCert.Certificate
+      CertificateAuthorityArn: !GetAtt SubCa.Arn
+      Fn::Transform:
+        Name: AWS::Include
+        Parameters:
+          Location: !Join
+            - ""
+            - - "s3://"
+              - !Ref CaChainS3BucketName
+              - "/pca/"
+              - !Select [1, !Split ["/", !Ref CertifyingCaArn]]
+              - "-cfn.yaml"
+
+  ############################################################
+  #
+  # CRL Related Resources (Common code for Subordinate CA creation)
+  #
+
+  # Unconditional (even crlNew is False) to satisfy SubCa dependency
+  CrlS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CaChainS3BucketName
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: acm-pca.amazonaws.com
+            Action:
+              - s3:GetObject*
+              - s3:GetBucket*
+              - s3:List*
+              - s3:PutObject
+              - s3:PutObjectAcl
+            Resource:
+              - !Sub "arn:aws:s3:::${CaChainS3BucketName}"
+              - !Sub "arn:aws:s3:::${CaChainS3BucketName}/*"
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: s3:*
+            Resource:
+              - !Sub "arn:aws:s3:::${CaChainS3BucketName}/*"
+              - !Sub "arn:aws:s3:::${CaChainS3BucketName}"
+
+  CrlS3Bucket:
+    Type: AWS::S3::Bucket
+    Condition: crlNew
+    Properties:
+      BucketName: !Ref CrlCname
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      WebsiteConfiguration:
+        IndexDocument: index.crl # Dummy value
+    DeletionPolicy: Retain
+
+  CaCrlCname:
+    Type: AWS::Route53::RecordSet
+    Condition: crlNew
+    Properties:
+      HostedZoneId: !Ref CrlPrivateZoneId
+      Name: !Ref CrlCname
+      ResourceRecords:
+        - !Sub "${CrlCname}.s3-website-${AWS::Region}.amazonaws.com"
+      TTL: 900
+      Type: CNAME
+
+  ############################################################
+  #
+  # CA Chain Upload
+  #
+  CaChainLambdaInvoke:
+    Type: AWS::CloudFormation::CustomResource
+    Version: "1.0"
+    DependsOn: SubCaCertActivation
+    Properties:
+      ServiceToken: !ImportValue CaChainLambdaArn
+      FunctionName: index.handler
+      CaArn: !GetAtt SubCa.Arn
+
+Outputs:
+  SubCaArn:
+    Value: !GetAtt SubCa.Arn
+
+  SubCaCertCert:
+    Value: !GetAtt SubCaCert.Certificate
+
+  CrlS3BucketRef:
+    Condition: crlNew
+    Value: !Ref CrlS3Bucket
+
+  CaCrlCnameRef:
+    Condition: crlNew
+    Value: !Ref CaCrlCname

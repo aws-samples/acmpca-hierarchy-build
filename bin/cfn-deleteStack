@@ -1,0 +1,13 @@
+#!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+USAGE="Usage: $(basename $0) stack"
+usage() { echo -e "$USAGE" >&2; exit 2; }
+
+stack=$1
+if [ -z "$stack" ]; then
+  usage
+fi
+
+aws cloudformation delete-stack --stack-name $stack

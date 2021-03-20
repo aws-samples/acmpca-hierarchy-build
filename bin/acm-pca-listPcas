@@ -1,0 +1,42 @@
+#!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+USAGE="Usage: $(basename $0) [-?aj] fld ...\n\
+  List ARNs of all undeleted CAs\n\
+\tfld ... List ARNs of all undeleted CAs with specified fields (comma-delimited), ignored if -j is used\n\
+\t-a      List all CAs including deleted ones\n\
+\t-j      List CAs in JSON (fld list ignored)\n\
+\t-?      Show this help text"
+usage() { echo -e "$USAGE" >&2; exit 2; }
+
+allCAs=
+outputType=
+while getopts "?aj" arg; do
+  case "$arg" in
+    \?) usage;;
+    a)  allCAs=true;;
+    j)  outputType=json;;
+  esac
+done
+shift $((OPTIND-1))
+
+flds=.Arn
+while [ -n "$1" ]; do
+    flds="${flds} + \",\" + .$1"
+    shift
+done
+
+jqFlags=
+jqFilters=
+if [ "$allCAs" != "true" ]; then
+  jqFilters="$jqFilters | select(.Status != \"DELETED\")"
+fi
+jqFLds=
+if [ "$outputType" != "json" ]; then
+  jqFilters="$jqFilters | $flds"
+  jqFlags=-r
+fi
+
+aws acm-pca list-certificate-authorities |
+jq $jqFlags ".CertificateAuthorities[]$jqFilters"

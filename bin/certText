@@ -1,0 +1,13 @@
+#!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+USAGE="Usage: $(basename $0) cert_file"
+usage() { echo -e "$USAGE" >&2; exit 2; }
+
+certFile=$1
+if [ -z "$certFile" ]; then
+  usage
+fi
+
+openssl x509 -text -noout -in $certFile

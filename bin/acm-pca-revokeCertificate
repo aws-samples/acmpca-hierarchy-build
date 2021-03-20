@@ -1,0 +1,25 @@
+#!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+USAGE="Usage: $(basename $0) pca_arn reason serial_of_cert\n\
+  Revoke a certificate issued by a Private CA, i.e., Certificate ARN starting with arn:aws:acm-pca:\n\
+Reason is one of:
+\tAFFILIATION_CHANGED\n\
+\tCESSATION_OF_OPERATION\n\
+\tA_A_COMPROMISE\n\
+\tPRIVILEGE_WITHDRAWN\n\
+\tSUPERSEDED\n\
+\tUNSPECIFIED\n\
+\tKEY_COMPROMISE\n\
+\tCERTIFICATE_AUTHORITY_COMPROMISE"
+usage() { echo -e "$USAGE" >&2; exit 2; }
+
+pca=$1
+reason=$2
+serial=$3
+if [ -z "$pca" -o -z "$reason" -o -z "$serial" ]; then
+  usage
+fi
+
+aws acm-pca revoke-certificate --certificate-authority-arn $pca --revocation-reason $reason --certificate-serial $serial

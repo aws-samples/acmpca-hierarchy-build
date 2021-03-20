@@ -1,0 +1,20 @@
+#!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+USAGE="Usage: $(basename $0) cert-joint-in-one-line"
+usage() { echo -e "$USAGE" >&2; exit 2; }
+
+if [ "$#" -lt 1 ]; then
+  usage
+fi
+
+while test -n "$1"; do
+    if [ "${1#-----}" != "$1" ]; then
+        # ----- on left
+        echo -n "$1 "
+    else
+        echo "$1"
+    fi
+    shift
+done

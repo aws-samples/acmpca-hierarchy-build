@@ -1,0 +1,63 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ACM Private CA and CRL S3 execution role
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+Parameters:
+  RoleName:
+    Description: CloudFormation Execution Role Name
+    Type: String
+    AllowedPattern: "^[A-Za-z0-9_+=,\\.@-]{1,64}"
+
+Resources:
+  ExecutionRoleAcmPcaPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: ACM Private CA and CRL S3 execution role policy
+      ManagedPolicyName: !Sub "${RoleName}-policy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAcmPca
+            Effect: Allow
+            Action: acm-pca:*
+            Resource: "*"
+          - Sid: AllowS3
+            Effect: Allow
+            Action: s3:*
+            Resource: "*"
+          - Sid: AllowRoute53
+            Effect: Allow
+            Action: route53:*
+            Resource: "*"
+          - Sid: AllowIam
+            Effect: Allow
+            Action: iam:*
+            Resource: "*"
+          - Sid: AllowLambda
+            Effect: Allow
+            Action: lambda:*
+            Resource: "*"
+          - Sid: AllowCfn
+            Effect: Allow
+            Action: cloudformation:*
+            Resource: "*"
+
+  ExecutionRoleAcmPca:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Sid: AssumeRole
+            Action: sts:AssumeRole
+            Principal:
+              Service: cloudformation.amazonaws.com
+      ManagedPolicyArns:
+        - !Ref ExecutionRoleAcmPcaPolicy
+
+Outputs:
+  ExecutionRole:
+    Value: !Ref ExecutionRoleAcmPca

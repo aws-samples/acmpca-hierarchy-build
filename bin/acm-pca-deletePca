@@ -1,0 +1,36 @@
+#!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# Defaults
+deleteInDays=7
+
+USAGE="Usage: $(basename $0) [-d delete_in_days:$deleteInDays] pca_arn"
+usage() { echo -e "$USAGE" >&2; exit 2; }
+
+while getopts "d:" arg; do
+  case "$arg" in
+    d)  deleteInDays=$OPTARG;;
+  esac
+done
+shift $((OPTIND-1))
+
+pca=$1
+if [ -z "$pca" ]; then
+  usage
+fi
+
+getPcaStatus() { aws acm-pca describe-certificate-authority --certificate-authority-arn $1 | jq -r ".CertificateAuthority.Status"; }
+
+pcaStatus=$(getPcaStatus $pca)
+echo Private CA: $pca
+echo Old Status: $pcaStatus
+
+if [ "$pcaStatus" == "ACTIVE" ]; then
+  echo Action: Disable now
+  aws acm-pca update-certificate-authority --status DISABLED --certificate-authority-arn $pca || exit 1
+fi
+aws acm-pca delete-certificate-authority --permanent-deletion-time-in-days $deleteInDays --certificate-authority-arn $pca || exit 1
+
+echo New Status: $(getPcaStatus $pca)
+echo Action: To be deleted in $deleteInDays days

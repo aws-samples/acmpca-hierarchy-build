@@ -1,0 +1,38 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: |-
+  Private Hosted Zone (PHZ) creation template
+  Note:
+    If the PHZ is associated with multiple VPCs or outside of the region where the stack is created
+    expand the VpcId to a list. e.g.,
+    - VPCId: ...
+      VPCRegion: ...
+    - VPCId: ...
+      VPCRegion: ...
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+Parameters:
+  DomainName:
+    Description: Domain Name of the Private Hosted Zone, e.g., example.int
+    Type: String
+
+  VPCId:
+    Description: VPC ID associated with the Private Hosted Zone
+    Type: AWS::EC2::VPC::Id
+
+Resources:
+  PrivateHostedZone:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      Name: !Ref DomainName
+      VPCs:
+        - VPCId: !Ref VPCId
+          VPCRegion: !Sub "${AWS::Region}"
+
+Outputs:
+  DomainName:
+    Value: !Ref DomainName
+
+  PrivateHostedZoneId:
+    Value: !Ref PrivateHostedZone

@@ -1,0 +1,67 @@
+#!/bin/bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: MIT-0
+
+# Defaults
+subj=
+signAlgo=SHA512WITHRSA
+validity=13m
+keyLen=4096
+mdHash=sha256
+
+validityExample="$validity (default), 10y, 365d etc"
+subjPrefix="/C=AU/ST=NSW/L=Sydney/O=My Organisation/OU=My Organisational Unit/CN="
+
+USAGE="Usage: $(basename $0) [-s subject] [-v validity] [-a signAlgo] [-k keyLen] [-m messageDigest] pca_arn domain\n\
+  Issue a certificate signed by a Private CA, i.e., Certificate ARN starting with arn:aws:acm-pca:\n\
+  Note 1: Certificates issued by a Private CA are not listed on ACM Console.
+  Note 2: Two files will be generated: <domain>.key and <domain>.csr
+\t-?          Show this help text\n\
+\tpca_arn     ARN of Private CA used to issue the certificate\n\
+\tdomain      Common Name (CN) in the certificate Subject\n\
+\t-v validity Validity of the certificate; e.g., $validityExample\n\
+\t-s subject  Full Subject of the certificate; default ${subjPrefix}<domain>\n\
+\t-a signAlgo Signing algorithm; default $signAlgo\n\
+  Settings for openssl
+\t-k keyLen   Key Length; default $keyLen\n\
+\t-m md       Message digest to sign the request with: md1, sha1, sha256; default $mdHash"
+
+usage() { echo -e "$USAGE" >&2; exit 2; }
+
+while getopts "s:v:a:k:m:" arg; do
+  case "$arg" in
+    s)  subj=$OPTARG;;
+    v)  validity=$OPTARG;;
+    a)  signAlgo=$OPTARG;;
+    k)  keyLen=$OPTARG;;
+    m)  mdHash=$OPTARG;;
+  esac
+done
+shift $((OPTIND-1))
+
+pca=$1
+domain=$2
+subj=${subj:-${subjPrefix}${domain}}
+
+validityValue=${validity%?}
+validityType=
+
+case "${validity#$validityValue}" in
+  d)  validityType=DAYS;;
+  m)  validityType=MONTHS;;
+  y)  validityType=YEARS;;
+esac
+
+if [ -z "$pca" -o -z "$domain" -o -z "$validityType" ]; then
+  usage
+fi
+
+validity="{\"Type\":\"${validityType}\",\"Value\":${validityValue}}"
+
+tmpB64=$(mktemp)
+trap "rm -f $tmpB64" EXIT
+
+openssl genrsa -out ${domain}.key $keyLen || exit 1
+openssl req -new -key ${domain}.key -$mdHash -nodes -subj "${subj}" > ${domain}.csr || exit 1
+base64 ${domain}.csr > $tmpB64 || exit 1
+aws acm-pca issue-certificate --certificate-authority-arn $pca --csr file://$tmpB64 --signing-algorithm $signAlgo --validity "$validity"
