@@ -31,6 +31,10 @@ Resources:
             Effect: Allow
             Action: route53:*
             Resource: "*"
+          - Sid: AllowVPC
+            Effect: Allow
+            Action: ec2:DescribeVpcs
+            Resource: "*"
           - Sid: AllowIam
             Effect: Allow
             Action: iam:*

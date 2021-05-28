@@ -51,7 +51,7 @@ All CloudFormation templates are under `cfn-templates/`.
    - CrlPrivateZoneId: Zone ID of the Private Zone where CrlCname is hosted
    - SubCaPathLen: How many levels of Subordinate CAs can be certified under this new Subordinate CA; default is 0 (no Subordinate CAs under this)
 2. Wait until the stack creation is complete
-3. From the Resources tab, note down  `<sub-ca-arn>` from the "Physical ID" column of the "RootCa" row, and use it to certify next level of Subordinate CAs if required
+3. From the Resources tab, note down  `<sub-ca-arn>` from the "Physical ID" column of the "SubCa" row, and use it to certify next level of Subordinate CAs if required
 4. Verify the Subordinate CA: `bin/acm-pca-listPcas Type Status CertificateAuthorityConfiguration.Subject.CommonName`
 5. Repeat the above to create more subordinate CAs if required
 
@@ -59,7 +59,7 @@ All CloudFormation templates are under `cfn-templates/`.
 
 Under the `bin/` directory, there are some useful Shell scripts as a simplified alternative to using AWS CLI. They can also serve as a guide to learn ACM related AWS CLI and OpenSSL commands.
 
-Generally, entering the command without parameters will show the help text. For commands that allow no parameters, option `-?` will show the help text (e.g., `bin/acm-ca-listPcas -?`).
+Generally, entering the command without parameters will show the help text. For commands that allow no parameters, option `-?` will show the help text (e.g., `bin/acm-pca-listPcas -?`).
 
 ### List all private CAs
 
@@ -85,13 +85,13 @@ Use `bin/certText <ca-name>-ca.cert | less` to show the certificate details.
 
 ### Verify the CA Chain
 
-Here `<ca-name>` is an arbitrary name you want to use for the CA.
+Here `<ca-name>` is an arbitrary name you want to use for the CA file path.
 
 ```
 bin/acm-pca-getCaCertificate -c <pca-arn> > <ca-name>-chain.cert
 ```
 
-You may also download the CA Chain from the S3 bucket to verify if the two are the same.
+You may also download the CA Certificate and Chain in one file from the S3 bucket.
 
 ```
 aws s3 cp s3://<ca-chain-s3-bucket>/pca/<pca-id>-chain.pem <ca-name>-chain.cert
@@ -152,10 +152,10 @@ bin/certText <domain>.cert | less
 
 Note down the serial number, e.g., 79:57:43:a0:4a:9a:2c:33:b4:8f:96:8f:bb:00:f9:93
 
-Certificates issued using `bin/acm-pca-issueCertificate` are not managed by ACM, which means such certificates
+Certificates issued using `bin/acm-pca-issueCertificate` are *not* managed by ACM, which means such certificates
 
-- are not renewable by ACM (not on ACM console)
-- with no private key kept in ACM (If you tried to export the certificate, it will shows an error that the certificate ARN is not valid.)
+- are not renewable by ACM (and does not appear on the ACM console)
+- with no private key kept in ACM (If you tried to export the certificate, it will show an error that the certificate ARN is not valid.)
 - with a certificate ARN in the format of `<ca-arn>/certificate/<cert-id>` (prefixed by Prinvate CA ARN)
 - can be retrieved using `bin/acm-pca-getCertificate` (instead of `bin/acm-getCertificate` because the Certificate ARN does not exist in ACM)
 
@@ -214,7 +214,7 @@ Reason code is one of the following:
 - KEY_COMPROMISE
 - CERTIFICATE_AUTHORITY_COMPROMISE
 
-Download the CRL file (about 5 minutes after the revocation to allow time for the CA to update the CRL).
+Please allow up to 30 minutes for the CA to update the CRL. After the CRL is updated, you may download the CRL file to verify.
 
 ```
 aws s3 cp s3://<crl-bucket>/crl/<pca-id>.crl <ca-name>.crl
@@ -224,15 +224,17 @@ View the CRL file.
 ```
 bin/crlText <ca-name>.crl | less
 ```
-Under "Revoked Certificates" the revoked certificate is shown. For example,
+Under "Revoked Certificates" the revoked certificate will be shown. For example,
 ```
 Revoked Certificates:
     Serial Number: 795743A04A9A2C33B48F968FBB00F993
         Revocation Date: Mar  3 01:43:35 2021 GMT
         CRL entry extensions:
-            X509v3 CRL Reason Code: 
+            X509v3 CRL Reason Code:
                 Superseded
 ```
+
+Note: Revocations will not be shown on the ACM console. You can download and verify the CRL using the above tools.
 
 ### Delete a CA
 
@@ -241,4 +243,16 @@ Revoked Certificates:
 - Delete the private CA stack first
   - The Private CA will be in the DISABLED state.
 - Delete the private CA using `bin/acm-pca-deletePca <pca-arn>`
-- Optionally, delete the private CA's CRL S3 Bucket (after archiving) unless the CRL S3 Bucket is being used by other CAs.
+  ```bash
+  Private CA: ...
+  Old Status: DISABLED
+  New Status: DELETED
+  Action: To be deleted in 7 days
+  ```
+
+Please note that deleting a private CA does not invalidate the certificates the private CA has already signed before the deletion.
+If you want to revoke some certificates signed by the deleted CA, you need to do so before you delete the private CA, and keep the CRL S3 Bucket website hosting intact, so that the CRL URL remains accessible for revocation verification.
+
+A quick way to revoke all certificates signed by any private CAs in the hierarchy is to have the root CA revoke the second-level private CAs and keep the root CA CRL S3 Bucket intact. After that, you may remove all private CAs in the hierarcy.
+
+For the above reason, in the CloudFormation templates, the deletion policy of the CRL Cname and S3 Bucket is set to `Retain`, so that private CA stack deletion will not affect the CRL. If you no longer need the CRL of a deleted private CA (e.g., after all certificates the deleted private CA revoked have expired), you may delete the CRL Cname and S3 Bucket manually.

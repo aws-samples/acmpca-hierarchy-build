@@ -13,7 +13,7 @@ Parameters:
   CaValidityType:
     Description: Private Root CA validity time unit; default is YEARS
     Type: String
-    AllowedValues: [ "YEARS", "MONTHS", "DAYS" ]
+    AllowedValues: ["YEARS", "MONTHS", "DAYS"]
     Default: "YEARS"
 
   CaCommonName:
@@ -43,13 +43,21 @@ Parameters:
   CaKeyAlgorithm:
     Description: Key Algorithm of the key pair the private Root CA creates when issuing a certificate; default is RSA_4096
     Type: String
-    AllowedValues: [ "RSA_2048", "RSA_4096", "EC_prime256v1", "EC_secp384r1" ]
+    AllowedValues: ["RSA_2048", "RSA_4096", "EC_prime256v1", "EC_secp384r1"]
     Default: "RSA_4096"
 
   CaSigningAlgorithm:
     Description: Signing Algorithm the private Root CA uses to sign certificate requests; default is SHA512WITHRSA
     Type: String
-    AllowedValues: [ "SHA256WITHECDSA", "SHA384WITHECDSA", "SHA512WITHECDSA", "SHA256WITHRSA", "SHA384WITHRSA", "SHA512WITHRSA" ]
+    AllowedValues:
+      [
+        "SHA256WITHECDSA",
+        "SHA384WITHECDSA",
+        "SHA512WITHECDSA",
+        "SHA256WITHRSA",
+        "SHA384WITHRSA",
+        "SHA512WITHRSA",
+      ]
     Default: "SHA512WITHRSA"
 
   CaChainS3BucketName:
@@ -71,7 +79,7 @@ Parameters:
     Type: String
     AllowedPattern: >-
       ^[a-z0-9][a-z0-9-\.]{2,62}$
-# Needs to align with S3 bucket naming pattern instead of the FQDN one: "^(((?!-)[A-Za-z0-9-]{0,62}[A-Za-z0-9])\.)+((?!-)[A-Za-z0-9-]{1,62}[A-Za-z0-9])$"
+  # Needs to align with S3 bucket naming pattern instead of the FQDN one: "^(((?!-)[A-Za-z0-9-]{0,62}[A-Za-z0-9])\.)+((?!-)[A-Za-z0-9-]{1,62}[A-Za-z0-9])$"
 
   CrlPrivateZoneId:
     Description: CRL Private Zone ID, i.e., the Zone ID of the Private Zone where CrlCname is hosted.
@@ -162,6 +170,8 @@ Resources:
               SSEAlgorithm: AES256
       WebsiteConfiguration:
         IndexDocument: index.crl # Dummy value
+      VersioningConfiguration:
+        Status: Enabled
     DeletionPolicy: Retain
 
   CaCrlCname:
@@ -173,6 +183,7 @@ Resources:
         - !Sub "${CrlCname}.s3-website-${AWS::Region}.amazonaws.com"
       TTL: 900
       Type: CNAME
+    DeletionPolicy: Retain
 
   ############################################################
   #
@@ -186,6 +197,8 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
     DeletionPolicy: Retain
 
   CaChainS3BucketPolicy:
@@ -207,62 +220,61 @@ Resources:
     Properties:
       Description: Lambda function to return the CA Chain
       Code:
-        ZipFile:
-          !Sub |
-            import boto3
-            import sys
-            import os
-            import re
-            import json
-            import cfnresponse
+        ZipFile: !Sub |
+          import boto3
+          import sys
+          import os
+          import re
+          import json
+          import cfnresponse
 
-            def handler(event, context):
-              print(json.dumps(event))
-              if 'RequestType' in event and event['RequestType'] == 'Delete':
-                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+          def handler(event, context):
+            print(json.dumps(event))
+            if 'RequestType' in event and event['RequestType'] == 'Delete':
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
 
-              try:
-                caArn = event['ResourceProperties']['CaArn']
-                caId = re.sub(r"^.*/", "", caArn)
+            try:
+              caArn = event['ResourceProperties']['CaArn']
+              caId = re.sub(r"^.*/", "", caArn)
 
-                client = boto3.client('acm-pca')
-                caCertJson = client.get_certificate_authority_certificate(
-                    CertificateAuthorityArn=caArn
-                )
-                print(json.dumps(caCertJson))
-                caCert = ''
-                caChain = ''
-                if 'Certificate' in caCertJson:
-                  caCert = caCertJson['Certificate'] + '\n'
-                if 'CertificateChain' in caCertJson:
-                  caChain = caCertJson['CertificateChain'] + '\n'
-                caCertChain = caCert + caChain
-                objPrefix = 'pca/' + caId
+              client = boto3.client('acm-pca')
+              caCertJson = client.get_certificate_authority_certificate(
+                  CertificateAuthorityArn=caArn
+              )
+              print(json.dumps(caCertJson))
+              caCert = ''
+              caChain = ''
+              if 'Certificate' in caCertJson:
+                caCert = caCertJson['Certificate'] + '\n'
+              if 'CertificateChain' in caCertJson:
+                caChain = caCertJson['CertificateChain'] + '\n'
+              caCertChain = caCert + caChain
+              objPrefix = 'pca/' + caId
 
-                s3 = boto3.client('s3')
-                s3.put_object(
-                  Bucket=os.environ['CaChainS3Bucket'],
-                  Body=caCertChain,
-                  Key=objPrefix + '-chain.pem',
-                )
-                s3.put_object(
-                  Bucket=os.environ['CaChainS3Bucket'],
-                  Body='CertificateChain: |\n  ' + caCertChain.strip().replace('\n', '\n  ') + '\n',
-                  Key=objPrefix + '-cfn.yaml',
-                )
+              s3 = boto3.client('s3')
+              s3.put_object(
+                Bucket=os.environ['CaChainS3Bucket'],
+                Body=caCertChain,
+                Key=objPrefix + '-chain.pem',
+              )
+              s3.put_object(
+                Bucket=os.environ['CaChainS3Bucket'],
+                Body='CertificateChain: |\n  ' + caCertChain.strip().replace('\n', '\n  ') + '\n',
+                Key=objPrefix + '-cfn.yaml',
+              )
 
-                # 4k limit in response
-                responseData = {
-                  'ObjectPrefix': objPrefix
-                }
-                print(json.dumps(responseData))
-                cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+              # 4k limit in response
+              responseData = {
+                'ObjectPrefix': objPrefix
+              }
+              print(json.dumps(responseData))
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
 
-              except:
-                print(f"Unexpected error: {sys.exc_info()}")
-                cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+            except:
+              print(f"Unexpected error: {sys.exc_info()}")
+              cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
 
-              return None
+            return None
       Handler: index.handler
       Environment:
         Variables:
@@ -277,40 +289,40 @@ Resources:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
-        - Effect: Allow
-          Principal:
-            Service:
-            - lambda.amazonaws.com
-          Action:
-          - sts:AssumeRole
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
       Path: "/"
       Policies:
-      - PolicyName: lambda-logging
-        PolicyDocument:
-          Version: "2012-10-17"
-          Statement:
-          - Effect: Allow
-            Action:
-            - logs:CreateLogGroup
-            - logs:CreateLogStream
-            - logs:PutLogEvents
-            Resource: arn:aws:logs:*:*:*
-      - PolicyName: acm-pca
-        PolicyDocument:
-          Version: "2012-10-17"
-          Statement:
-          - Effect: Allow
-            Action:
-            - acm-pca:GetCertificateAuthorityCertificate
-            Resource: !Sub "arn:aws:acm-pca:*:${AWS::AccountId}:certificate-authority/*"
-      - PolicyName: s3-putobj
-        PolicyDocument:
-          Version: "2012-10-17"
-          Statement:
-          - Effect: Allow
-            Action: s3:PutObject
-            Resource:
-              - !Sub "arn:aws:s3:::${CaChainS3Bucket}/pca/*"
+        - PolicyName: lambda-logging
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        - PolicyName: acm-pca
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - acm-pca:GetCertificateAuthorityCertificate
+                Resource: !Sub "arn:aws:acm-pca:*:${AWS::AccountId}:certificate-authority/*"
+        - PolicyName: s3-putobj
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${CaChainS3Bucket}/pca/*"
 
   CaChainLambdaInvoke:
     Type: AWS::CloudFormation::CustomResource
