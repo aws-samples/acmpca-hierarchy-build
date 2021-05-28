@@ -13,7 +13,7 @@ Parameters:
   CaValidityType:
     Description: Private Subordinate CA validity time unit; default is YEARS
     Type: String
-    AllowedValues: [ "YEARS", "MONTHS", "DAYS" ]
+    AllowedValues: ["YEARS", "MONTHS", "DAYS"]
     Default: "YEARS"
 
   CaCommonName:
@@ -43,13 +43,21 @@ Parameters:
   CaKeyAlgorithm:
     Description: Key Algorithm of the key pair the private Subordinate CA creates when issuing a certificate; default is RSA_4096
     Type: String
-    AllowedValues: [ "RSA_2048", "RSA_4096", "EC_prime256v1", "EC_secp384r1" ]
+    AllowedValues: ["RSA_2048", "RSA_4096", "EC_prime256v1", "EC_secp384r1"]
     Default: "RSA_4096"
 
   CaSigningAlgorithm:
     Description: Signing Algorithm the private Subordinate CA uses to sign certificate requests; default is SHA512WITHRSA
     Type: String
-    AllowedValues: [ "SHA256WITHECDSA", "SHA384WITHECDSA", "SHA512WITHECDSA", "SHA256WITHRSA", "SHA384WITHRSA", "SHA512WITHRSA" ]
+    AllowedValues:
+      [
+        "SHA256WITHECDSA",
+        "SHA384WITHECDSA",
+        "SHA512WITHECDSA",
+        "SHA256WITHRSA",
+        "SHA384WITHRSA",
+        "SHA512WITHRSA",
+      ]
     Default: "SHA512WITHRSA"
 
   CaChainS3BucketName:
@@ -69,7 +77,7 @@ Parameters:
     Description: >
       How many levels of Subordinate CAs can be certified under this new Subordinate CA; default is 0 (no Subordinate CAs under this)
     Type: Number
-    AllowedValues: [ 0, 1, 2, 3 ]
+    AllowedValues: [0, 1, 2, 3]
     Default: 0
 
   CrlExpirationInDays:
@@ -84,7 +92,7 @@ Parameters:
     Type: String
     AllowedPattern: >-
       ^[a-z0-9][a-z0-9-\.]{2,62}$
-# Needs to align with S3 bucket naming pattern instead of the FQDN one: "^(((?!-)[A-Za-z0-9-]{0,62}[A-Za-z0-9])\.)+((?!-)[A-Za-z0-9-]{1,62}[A-Za-z0-9])$"
+  # Needs to align with S3 bucket naming pattern instead of the FQDN one: "^(((?!-)[A-Za-z0-9-]{0,62}[A-Za-z0-9])\.)+((?!-)[A-Za-z0-9-]{1,62}[A-Za-z0-9])$"
 
   CrlCnameIsNew:
     Description: >
@@ -92,7 +100,7 @@ Parameters:
       Select YES if you want to create a new CRL Cname, or
       NO if the specified CRL Cname already exists (e.g., a shared CrlCname)
     Type: String
-    AllowedValues: [ "YES", "NO" ]
+    AllowedValues: ["YES", "NO"]
     Default: "YES"
 
   CrlPrivateZoneId:
@@ -126,7 +134,7 @@ Resources:
           CustomCname: !Ref CrlCname
           Enabled: true
           ExpirationInDays: !Ref CrlExpirationInDays
-          S3BucketName: !Ref CaChainS3BucketName
+          S3BucketName: !Ref CrlS3Bucket
       KeyAlgorithm: !Ref CaKeyAlgorithm
       SigningAlgorithm: !Ref CaSigningAlgorithm
     UpdateReplacePolicy: Retain
@@ -168,7 +176,7 @@ Resources:
   CrlS3BucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
-      Bucket: !Ref CaChainS3BucketName
+      Bucket: !Ref CrlS3Bucket
       PolicyDocument:
         Statement:
           - Effect: Allow
@@ -181,15 +189,15 @@ Resources:
               - s3:PutObject
               - s3:PutObjectAcl
             Resource:
-              - !Sub "arn:aws:s3:::${CaChainS3BucketName}"
-              - !Sub "arn:aws:s3:::${CaChainS3BucketName}/*"
+              - !Sub "arn:aws:s3:::${CrlS3Bucket}"
+              - !Sub "arn:aws:s3:::${CrlS3Bucket}/*"
           - Effect: Allow
             Principal:
               AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
             Action: s3:*
             Resource:
-              - !Sub "arn:aws:s3:::${CaChainS3BucketName}/*"
-              - !Sub "arn:aws:s3:::${CaChainS3BucketName}"
+              - !Sub "arn:aws:s3:::${CrlS3Bucket}/*"
+              - !Sub "arn:aws:s3:::${CrlS3Bucket}"
 
   CrlS3Bucket:
     Type: AWS::S3::Bucket
@@ -202,6 +210,8 @@ Resources:
               SSEAlgorithm: AES256
       WebsiteConfiguration:
         IndexDocument: index.crl # Dummy value
+      VersioningConfiguration:
+        Status: Enabled
     DeletionPolicy: Retain
 
   CaCrlCname:
@@ -214,6 +224,7 @@ Resources:
         - !Sub "${CrlCname}.s3-website-${AWS::Region}.amazonaws.com"
       TTL: 900
       Type: CNAME
+    DeletionPolicy: Retain
 
   ############################################################
   #
