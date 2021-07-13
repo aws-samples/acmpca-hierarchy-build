@@ -191,6 +191,9 @@ Resources:
             Resource:
               - !Sub "arn:aws:s3:::${CrlS3Bucket}"
               - !Sub "arn:aws:s3:::${CrlS3Bucket}/*"
+            Condition:
+              StringEquals:
+                "AWS:SourceAccount": !Ref "AWS::AccountId"
           - Effect: Allow
             Principal:
               AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
@@ -198,6 +201,9 @@ Resources:
             Resource:
               - !Sub "arn:aws:s3:::${CrlS3Bucket}/*"
               - !Sub "arn:aws:s3:::${CrlS3Bucket}"
+            Condition:
+              StringEquals:
+                "AWS:SourceAccount": !Ref "AWS::AccountId"
 
   CrlS3Bucket:
     Type: AWS::S3::Bucket

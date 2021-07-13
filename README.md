@@ -30,11 +30,23 @@ All CloudFormation templates are under `cfn-templates/`.
 ### Root CA
 
 1. Create the Root CA stack
-   - CloudFormation template: `acm-pca-root-ca.yaml`
-   - CaChainS3BucketName: S3 Bucket to be created for CloudFormation to hold the CA Chain and Template snippet
-   - CaValidityValue and CaValidityType: How long the CA is valid for; Recommend to use a long period for the Root CA; default is 10 YEARS
-   - CrlCname: CRL Canonical Name (Cname) to the CRL hosting S3 bucket (a globally unique name), e.g., crl.pca.example.int
-   - CrlPrivateZoneId: Zone ID of the Private Hosted Zone where CrlCname is hosted
+    - Open the CloudFormation console
+    - Click "Create stack" and select "With new resources (standard)"
+    - Select "Upload a template file"
+    - Click "Choose file"
+    - Upload CloudFormation template: `acm-pca-root-ca.yaml`
+    - Click "Next"
+    - Enter the stack details and note the following:
+      - CaChainS3BucketName: S3 Bucket to be created for CloudFormation to hold the CA Chain and Template snippet
+      - CaValidityValue and CaValidityType: How long the CA is valid for; Recommend to use a long period for the Root CA; default is 10 YEARS
+      - CrlCname: CRL Canonical Name (Cname) to the CRL hosting S3 bucket (a globally unique name), e.g., crl.pca.example.int
+      - CrlPrivateZoneId: Zone ID of the Private Hosted Zone where CrlCname is hosted
+    - Click "Next"
+    - Select and IAM role if required
+    - Click "Next"
+    - Confirm
+      - "I acknowledge that AWS CloudFormation might create IAM resources."
+    - Click "Create stack"
 2. Wait until the stack creation is complete
 3. From the Resources tab, note down  `<root-ca-arn>` from the "Physical ID" column of the "RootCa" row, and use it to certify first level Subordinate CAs
 4. Verify the Root CA: `bin/acm-pca-listPcas Type Status CertificateAuthorityConfiguration.Subject.CommonName`
@@ -42,14 +54,28 @@ All CloudFormation templates are under `cfn-templates/`.
 ### Subordinate CA
 
 1. Create the Subordinate CA stack
-   - CloudFormation template: `acm-pca-sub-ca.yaml`
-   - CaChainS3BucketName: Existing S3 Bucket for CloudFormation to hold the CA Chain and Template snippet
-   - CaValidityValue and CaValidityType: How long the CA is valid for; A subordinate CA must not outlive its parent CA; i.e., must expire before its parent CA does
-   - CertifyingCaArn: `<parent-ca-arn>`
-   - CrlCname: CRL Canonical Name (Cname) to the CRL hosting S3 bucket (a globally unique name), e.g., crl.pca.example.int
-   - CrlCnameIsNew: Select YES if you want to create a new CRL Cname, or NO if the specified CRL Cname already exists (e.g., a shared CrlCname)
-   - CrlPrivateZoneId: Zone ID of the Private Zone where CrlCname is hosted
-   - SubCaPathLen: How many levels of Subordinate CAs can be certified under this new Subordinate CA; default is 0 (no Subordinate CAs under this)
+    - Open the CloudFormation console
+    - Click "Create stack" and select "With new resources (standard)"
+    - Select "Upload a template file"
+    - Click "Choose file"
+    - Upload CloudFormation template: `acm-pca-sub-ca.yaml`
+    - Click "Next"
+    - Enter the stack details and note the following:
+      - CaChainS3BucketName: Existing S3 Bucket for CloudFormation to hold the CA Chain and Template snippet
+      - CaValidityValue and CaValidityType: How long the CA is valid for; A subordinate CA must not outlive its parent CA; i.e., must expire before its parent CA does
+      - CertifyingCaArn: `<parent-ca-arn>`
+      - CrlCname: CRL Canonical Name (Cname) to the CRL hosting S3 bucket (a globally unique name), e.g., crl.pca.example.int
+      - CrlCnameIsNew: Select YES if you want to create a new CRL Cname, or NO if the specified CRL Cname already exists (e.g., a shared CrlCname)
+      - CrlPrivateZoneId: Zone ID of the Private Zone where CrlCname is hosted
+      - SubCaPathLen: How many levels of Subordinate CAs can be certified under this new Subordinate CA; default is 0 (no Subordinate CAs under this)
+    - Click "Next"
+    - Select and IAM role if required
+    - Click "Next"
+    - Confirm
+      - "I acknowledge that AWS CloudFormation might create IAM resources."
+      - "I acknowledge that AWS CloudFormation might create IAM resources with custom names."
+      - "I acknowledge that AWS CloudFormation might require the following capability: CAPABILITY_AUTO_EXPAND"
+    - Click "Create stack"
 2. Wait until the stack creation is complete
 3. From the Resources tab, note down  `<sub-ca-arn>` from the "Physical ID" column of the "SubCa" row, and use it to certify next level of Subordinate CAs if required
 4. Verify the Subordinate CA: `bin/acm-pca-listPcas Type Status CertificateAuthorityConfiguration.Subject.CommonName`
@@ -245,7 +271,8 @@ Note: Revocations will not be shown on the ACM console. You can download and ver
 - Delete the private CA using `bin/acm-pca-deletePca <pca-arn>`
   ```bash
   Private CA: ...
-  Old Status: DISABLED
+  Old Status: ACTIVE
+  Action: Disable now
   New Status: DELETED
   Action: To be deleted in 7 days
   ```
